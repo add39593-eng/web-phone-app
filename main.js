@@ -9,7 +9,8 @@ let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
 let ringtoneInterval = null;
-let audioCtx = null; // 音声コンテキスト保持用
+let holdMusicInterval = null; // 保留音用のタイマー
+let audioCtx = null;
 
 // 初回操作時にAudioContextを有効化する関数
 function initAudioContext() {
@@ -58,6 +59,76 @@ function stopRingtone() {
   }
 }
 
+// 保留音を鳴らす関数（かえるの合唱のメロディ）
+function playHoldMusic() {
+  stopHoldMusic();
+  initAudioContext();
+
+  // 音階の周波数 (Hz) 定義
+  // ド:523.25, レ:587.33, ミ:659.25, ファ:698.46, ソ:783.99, ラ:880.00, シ:987.77, 高いド:1046.50
+  const n = {
+    C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46,
+    G5: 783.99, A5: 880.00, B5: 987.77, C6: 1046.50,
+    rest: 0
+  };
+
+  // 「かえるの合唱」のメロディ譜面（[音, 長さ(拍)]）
+  const melody = [
+    [n.C6, 1], [n.B5, 1], [n.A5, 1], [n.G5, 1],
+    [n.A5, 1], [n.B5, 1], [n.C6, 1], [n.rest, 1],
+    [n.A5, 1], [n.G5, 1], [n.F5, 1], [n.E5, 1],
+    [n.F5, 1], [n.G5, 1], [n.A5, 1], [n.rest, 1],
+    [n.C6, 2], [n.C6, 2], [n.G5, 2], [n.G5, 2],
+    [n.C6, 2], [n.C6, 2], [n.rest, 2],
+    [n.C6, 0.5], [n.B5, 0.5], [n.A5, 0.5], [n.G5, 0.5],
+    [n.C6, 0.5], [n.G5, 0.5], [n.E5, 0.5], [n.C5, 0.5],
+    [n.C6, 1], [n.G5, 1], [n.C6, 2], [n.rest, 2]
+  ];
+
+  let step = 0;
+  const beatDuration = 220; // 1拍のミリ秒
+
+  const playNextNote = () => {
+    try {
+      if (!audioCtx || !isHolding) return;
+      const [freq, duration] = melody[step];
+
+      if (freq > 0) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'triangle'; // やわらかい音色
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        const durSec = (beatDuration * duration) / 1000 * 0.85;
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durSec);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + durSec);
+      }
+
+      step++;
+      if (step >= melody.length) {
+        step = 0; // 曲が終わったらループ
+      }
+    } catch (e) {}
+  };
+
+  playNextNote();
+  holdMusicInterval = setInterval(playNextNote, beatDuration);
+}
+
+function stopHoldMusic() {
+  if (holdMusicInterval) {
+    clearInterval(holdMusicInterval);
+    holdMusicInterval = null;
+  }
+}
+
 function formatPhoneNumber(str) {
   let digits = str.replace(/\D/g, '');
   if (digits.length > 8) digits = digits.slice(0, 8);
@@ -73,7 +144,7 @@ function formatPhoneNumber(str) {
 }
 
 function switchTab(tabName, btnElem) {
-  initAudioContext(); // タップ時に音声を許可させる
+  initAudioContext();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active-tab'));
   
@@ -89,7 +160,7 @@ let rawDigits = "";
 const dialDisplay = document.getElementById('dial-display');
 
 function pressKey(char) {
-  initAudioContext(); // キー押下時に音声を許可させる
+  initAudioContext();
   if (rawDigits.length >= 8) return;
   rawDigits += char;
   dialDisplay.textContent = formatPhoneNumber(rawDigits);
@@ -174,7 +245,11 @@ async function startWaitingRoom() {
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
       
-      playRingtone(); // 着信音再生
+      playRingtone();
+
+      document.getElementById('unlock-audio-btn').onclick = () => {
+        initAudioContext();
+      };
 
       document.getElementById('accept-btn').onclick = async () => {
         initAudioContext();
@@ -300,6 +375,7 @@ async function forceEndCall() {
 async function cleanupCall() {
   stopTimer();
   stopRingtone();
+  stopHoldMusic();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
   document.getElementById('status-msg').textContent = "";
@@ -322,16 +398,24 @@ async function cleanupCall() {
   }
 }
 
+// 保留ボタンの処理
 document.getElementById('hold-btn').addEventListener('click', () => {
   initAudioContext();
   if (!isHolding) {
+    // 保留にする（自分の音声を止めて保留音を流す）
     myAudioStream.stop();
     isHolding = true;
     document.getElementById('hold-btn').style.background = '#ffcc00';
     document.getElementById('hold-btn').style.color = '#000';
+    playHoldMusic(); // 保留音スタート
   } else {
+    // 保留解除
+    stopHoldMusic();
     SkyWayStreamFactory.createMicrophoneAudioStream().then(stream => {
       myAudioStream = stream;
+      if (currentRoom && meInstance) {
+        meInstance.publish(myAudioStream);
+      }
       isHolding = false;
       document.getElementById('hold-btn').style.background = '#3a3a3c';
       document.getElementById('hold-btn').style.color = '#fff';
@@ -434,7 +518,6 @@ function createSkyWayContext() {
               {
                 id: '*', name: '*', actions: ['write'],
                 publication: { actions: ['write'] },
-                subscription: { actions: ['write'] },
               },
             ],
             sfuBots: [{ actions: ['write'], forwardings: [{ actions: ['write'] }] }]
