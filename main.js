@@ -9,10 +9,9 @@ let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
 
-// 数字を自動で `00X-XX-XXX` の形にフォーマットする関数
 function formatPhoneNumber(str) {
-  let digits = str.replace(/\D/g, ''); // 数字以外を削除
-  if (digits.length > 8) digits = digits.slice(0, 8); // 最大8桁
+  let digits = str.replace(/\D/g, '');
+  if (digits.length > 8) digits = digits.slice(0, 8);
 
   let p1 = digits.slice(0, 3);
   let p2 = digits.slice(3, 5);
@@ -24,7 +23,6 @@ function formatPhoneNumber(str) {
   return formatted;
 }
 
-// タブ切り替え
 function switchTab(tabName, btnElem) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active-tab'));
@@ -37,7 +35,6 @@ function switchTab(tabName, btnElem) {
   }
 }
 
-// ダイヤルパッド操作（自動ハイフン）
 let rawDigits = "";
 const dialDisplay = document.getElementById('dial-display');
 
@@ -54,7 +51,6 @@ function deleteKey() {
   }
 }
 
-// 起動時チェック
 window.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('my_phone_number');
   if (saved) {
@@ -68,7 +64,6 @@ window.addEventListener('DOMContentLoaded', () => {
   loadHistory();
 });
 
-// 初回ログイン
 document.getElementById('login-btn').addEventListener('click', () => {
   const inputVal = document.getElementById('login-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
@@ -82,7 +77,6 @@ document.getElementById('login-btn').addEventListener('click', () => {
   initApp();
 });
 
-// 番号変更（設定画面）
 document.getElementById('update-num-btn').addEventListener('click', () => {
   const inputVal = document.getElementById('change-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
@@ -105,8 +99,10 @@ async function initApp() {
   }
 }
 
-// 待受
+// 待受ルーム（自分の番号をルーム名にする）
 async function startWaitingRoom() {
+  await cleanupCall(); // 念のため古いセッションを掃除
+
   try {
     const context = await createSkyWayContext();
     const room = await SkyWayRoom.FindOrCreate(context, {
@@ -117,7 +113,6 @@ async function startWaitingRoom() {
     currentRoom = room;
     meInstance = me;
 
-    // 誰かが入ってきた（着信）
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
@@ -145,7 +140,6 @@ async function startWaitingRoom() {
       };
     });
 
-    // 相手が退出（電話を切った）とき
     room.onMemberLeft.add(async () => {
       await forceEndCall();
     });
@@ -155,7 +149,7 @@ async function startWaitingRoom() {
   }
 }
 
-// 発信
+// 発信（相手の番号のルームに参加）
 document.getElementById('dial-call-btn').addEventListener('click', async () => {
   const targetNum = dialDisplay.textContent;
   if (!targetNum || targetNum.length < 9) {
@@ -168,6 +162,8 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
   }
 
   document.getElementById('status-msg').textContent = `${targetNum} へ発信中...`;
+
+  await cleanupCall(); // 古いセッションを確実に破棄してから発信
 
   try {
     const context = await createSkyWayContext();
@@ -208,18 +204,17 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
   }
 });
 
-// 自分が電話を切るボタン
+// 終話ボタン
 document.getElementById('hangup-btn').addEventListener('click', async () => {
-  await cleanupCall();
-  startWaitingRoom();
+  await forceEndCall();
 });
 
-// 相手が切ったときや通話終了時の共通処理
 async function forceEndCall() {
   await cleanupCall();
   startWaitingRoom();
 }
 
+// 徹底的なクリーンアップ処理（前回のゴミを残さない）
 async function cleanupCall() {
   stopTimer();
   document.getElementById('incall-overlay').style.display = 'none';
@@ -227,23 +222,22 @@ async function cleanupCall() {
   isHolding = false;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
-  document.getElementById('status-msg').textContent = '通話が終了しました';
+
+  if (meInstance) {
+    try {
+      await meInstance.leave();
+    } catch (e) {}
+    meInstance = null;
+  }
 
   if (currentRoom) {
     try {
-      if (meInstance) {
-        await meInstance.leave();
-      }
       await currentRoom.close();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) {}
     currentRoom = null;
-    meInstance = null;
   }
 }
 
-// 保留
 document.getElementById('hold-btn').addEventListener('click', () => {
   if (!isHolding) {
     myAudioStream.stop();
@@ -260,10 +254,10 @@ document.getElementById('hold-btn').addEventListener('click', () => {
   }
 });
 
-// タイマー
 function startTimer() {
   secondsElapsed = 0;
   document.getElementById('call-timer').textContent = '00:00';
+  if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     secondsElapsed++;
     const mins = Math.floor(secondsElapsed / 60).toString().padStart(2, '0');
@@ -271,9 +265,14 @@ function startTimer() {
     document.getElementById('call-timer').textContent = `${mins}:${secs}`;
   }, 1000);
 }
-function stopTimer() { clearInterval(timerInterval); }
 
-// 電話帳
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
 document.getElementById('add-contact-btn').addEventListener('click', () => {
   const name = document.getElementById('contact-name').value;
   const numInput = document.getElementById('contact-num').value;
@@ -306,7 +305,6 @@ function callContact(num) {
   switchTab('dial', document.querySelectorAll('.nav-item')[0]);
 }
 
-// 履歴
 function addHistory(type, num) {
   let history = JSON.parse(localStorage.getItem('phone_history') || '[]');
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -328,7 +326,6 @@ function loadHistory() {
   });
 }
 
-// SkyWayトークン作成
 function createSkyWayContext() {
   const token = new SkyWayAuthToken({
     jti: uuidV4(),
