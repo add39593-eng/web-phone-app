@@ -9,7 +9,7 @@ let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
 let ringtoneInterval = null;
-let holdMusicInterval = null; // 保留音用のタイマー
+let holdMusicInterval = null;
 let audioCtx = null;
 
 // 初回操作時にAudioContextを有効化する関数
@@ -24,7 +24,7 @@ function initAudioContext() {
 
 // 着信音を鳴らす関数 (Web Audio API)
 function playRingtone() {
-  stopRingtone();
+  stopRingtone(); // 二重鳴り防止のため必ず一度止める
   initAudioContext();
   
   const playBeep = () => {
@@ -64,15 +64,12 @@ function playHoldMusic() {
   stopHoldMusic();
   initAudioContext();
 
-  // 音階の周波数 (Hz) 定義
-  // ド:523.25, レ:587.33, ミ:659.25, ファ:698.46, ソ:783.99, ラ:880.00, シ:987.77, 高いド:1046.50
   const n = {
     C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46,
     G5: 783.99, A5: 880.00, B5: 987.77, C6: 1046.50,
     rest: 0
   };
 
-  // 「かえるの合唱」のメロディ譜面（[音, 長さ(拍)]）
   const melody = [
     [n.C6, 1], [n.B5, 1], [n.A5, 1], [n.G5, 1],
     [n.A5, 1], [n.B5, 1], [n.C6, 1], [n.rest, 1],
@@ -86,7 +83,7 @@ function playHoldMusic() {
   ];
 
   let step = 0;
-  const beatDuration = 220; // 1拍のミリ秒
+  const beatDuration = 220;
 
   const playNextNote = () => {
     try {
@@ -97,7 +94,7 @@ function playHoldMusic() {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
 
-        osc.type = 'triangle'; // やわらかい音色
+        osc.type = 'triangle';
         osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
 
         const durSec = (beatDuration * duration) / 1000 * 0.85;
@@ -113,7 +110,7 @@ function playHoldMusic() {
 
       step++;
       if (step >= melody.length) {
-        step = 0; // 曲が終わったらループ
+        step = 0;
       }
     } catch (e) {}
   };
@@ -241,6 +238,7 @@ async function startWaitingRoom() {
 
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
+      if (isCallStarted) return; // すでに通話が始まっていれば無視
 
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
@@ -251,10 +249,11 @@ async function startWaitingRoom() {
         initAudioContext();
       };
 
+      // イベントの重複登録を防ぐため、ボタンのonclickを直接上書き
       document.getElementById('accept-btn').onclick = async () => {
         initAudioContext();
         isCallStarted = true;
-        stopRingtone();
+        stopRingtone(); // 着信音を確実に止める
         document.getElementById('incoming-overlay').style.display = 'none';
         document.getElementById('incall-overlay').style.display = 'flex';
         document.getElementById('incall-target').textContent = "通話中";
@@ -272,7 +271,7 @@ async function startWaitingRoom() {
 
       document.getElementById('reject-btn').onclick = async () => {
         initAudioContext();
-        stopRingtone();
+        stopRingtone(); // 着信音を確実に止める
         document.getElementById('incoming-overlay').style.display = 'none';
         addHistory("不在着信", "相手");
         await forceEndCall();
@@ -282,7 +281,7 @@ async function startWaitingRoom() {
     room.onMemberLeft.add(async () => {
       const incomingOverlay = document.getElementById('incoming-overlay');
       if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
-        stopRingtone();
+        stopRingtone(); // 相手が切ったときも確実に止める
         incomingOverlay.style.display = 'none';
         addHistory("不在着信", "相手");
       }
@@ -374,7 +373,7 @@ async function forceEndCall() {
 
 async function cleanupCall() {
   stopTimer();
-  stopRingtone();
+  stopRingtone(); // 終了時は必ず着信音を強制停止
   stopHoldMusic();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
@@ -402,14 +401,12 @@ async function cleanupCall() {
 document.getElementById('hold-btn').addEventListener('click', () => {
   initAudioContext();
   if (!isHolding) {
-    // 保留にする（自分の音声を止めて保留音を流す）
     myAudioStream.stop();
     isHolding = true;
     document.getElementById('hold-btn').style.background = '#ffcc00';
     document.getElementById('hold-btn').style.color = '#000';
-    playHoldMusic(); // 保留音スタート
+    playHoldMusic();
   } else {
-    // 保留解除
     stopHoldMusic();
     SkyWayStreamFactory.createMicrophoneAudioStream().then(stream => {
       myAudioStream = stream;
