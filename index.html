@@ -2,7 +2,6 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <!-- スマホで画面いっぱいに表示し、勝手にズームさせないための設定 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Web Phone App</title>
   <style>
@@ -26,7 +25,7 @@
       justify-content: center;
       align-items: center;
       height: 100vh;
-      height: 100dvh; /* モバイルブラウザの上下バーを考慮した高さ */
+      height: 100dvh;
       color: var(--text);
       overflow: hidden;
     }
@@ -34,7 +33,7 @@
     .phone-container {
       width: 100%;
       height: 100%;
-      max-width: 430px; /* PCなどではスマホ風の幅に制限 */
+      max-width: 430px;
       max-height: 100vh;
       max-height: 100dvh;
       background: var(--card-bg);
@@ -42,18 +41,18 @@
       flex-direction: column;
       overflow: hidden;
       position: relative;
+      /* PCでも枠がつかないように調整 */
+      box-shadow: none;
+      border: none;
+      border-radius: 0;
     }
 
-    /* スマホより大きい画面のときは少し影をつけてアプリっぽくする */
     @media (min-width: 431px) {
+      body { background: #f2f2f7; }
       .phone-container {
         height: 850px;
-        border-radius: 40px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-        border: 10px solid #1c1c1e;
-      }
-      body {
-        background: #f2f2f7;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border-radius: 20px; /* 枠の代わりに少し角を丸くしてカード風に */
       }
     }
 
@@ -65,13 +64,13 @@
       box-sizing: border-box;
       padding-bottom: 90px;
     }
-    .active-screen { display: block; }
+    .active-screen { display: flex; flex-direction: column; }
 
     h3 {
       font-size: 22px;
       font-weight: 700;
       margin-top: 0;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
     }
 
     /* ボトムナビゲーション */
@@ -115,12 +114,20 @@
     }
     #login-screen.active { display: flex; flex-direction: column; justify-content: center; align-items: center; }
 
-    /* ダイヤルパッド */
+    /* ダイヤルパッドの配置調整 */
+    .dial-screen-inner {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding-bottom: 30px;
+    }
     .display-number {
-      font-size: 30px;
+      font-size: 32px;
       font-weight: 600;
       letter-spacing: 1px;
-      margin-bottom: 25px;
+      margin-bottom: 20px;
       height: 45px;
       color: var(--text);
       text-align: center;
@@ -128,12 +135,11 @@
     .keypad {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 15px;
-      width: 270px;
-      margin: 0 auto;
+      gap: 16px;
+      width: 280px;
     }
     .key {
-      width: 70px; height: 70px;
+      width: 72px; height: 72px;
       border-radius: 50%;
       border: none;
       background: #f1f2f6;
@@ -147,18 +153,18 @@
     }
     .key:active { background: #d1d5db; }
     .call-action-btn {
-      width: 70px; height: 70px;
+      width: 72px; height: 72px;
       border-radius: 50%;
       border: none;
       background: var(--success);
       color: white;
       font-size: 24px;
       cursor: pointer;
-      margin: 25px auto 0;
+      margin-top: 25px;
       display: flex; justify-content: center; align-items: center;
       box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
     }
-    .delete-key { background: transparent; color: var(--text-secondary); font-size: 18px; }
+    .delete-key { background: transparent; color: var(--text-secondary); font-size: 20px; }
 
     /* 入力フォーム・ボタン */
     input, button { font-family: inherit; }
@@ -236,25 +242,27 @@
     <!-- 【画面1：発信画面】 -->
     <div id="screen-dial" class="screen active-screen">
       <h3>キーパッド</h3>
-      <div class="display-number" id="dial-display"></div>
-      
-      <div class="keypad">
-        <button class="key" onclick="pressKey('1')">1</button>
-        <button class="key" onclick="pressKey('2')">2</button>
-        <button class="key" onclick="pressKey('3')">3</button>
-        <button class="key" onclick="pressKey('4')">4</button>
-        <button class="key" onclick="pressKey('5')">5</button>
-        <button class="key" onclick="pressKey('6')">6</button>
-        <button class="key" onclick="pressKey('7')">7</button>
-        <button class="key" onclick="pressKey('8')">8</button>
-        <button class="key" onclick="pressKey('9')">9</button>
-        <button class="key" style="visibility: hidden;"></button>
-        <button class="key" onclick="pressKey('0')">0</button>
-        <button class="key delete-key" onclick="deleteKey()">⌫</button>
+      <div class="dial-screen-inner">
+        <div class="display-number" id="dial-display"></div>
+        
+        <div class="keypad">
+          <button class="key" onclick="pressKey('1')">1</button>
+          <button class="key" onclick="pressKey('2')">2</button>
+          <button class="key" onclick="pressKey('3')">3</button>
+          <button class="key" onclick="pressKey('4')">4</button>
+          <button class="key" onclick="pressKey('5')">5</button>
+          <button class="key" onclick="pressKey('6')">6</button>
+          <button class="key" onclick="pressKey('7')">7</button>
+          <button class="key" onclick="pressKey('8')">8</button>
+          <button class="key" onclick="pressKey('9')">9</button>
+          <button class="key" style="visibility: hidden;"></button>
+          <button class="key" onclick="pressKey('0')">0</button>
+          <button class="key delete-key" onclick="deleteKey()">⌫</button>
+        </div>
+        
+        <button class="call-action-btn" id="dial-call-btn">📞</button>
+        <p id="status-msg" style="font-size: 13px; color: var(--text-secondary); margin-top: 15px; height: 18px; text-align: center;"></p>
       </div>
-      
-      <button class="call-action-btn" id="dial-call-btn">📞</button>
-      <p id="status-msg" style="font-size: 13px; color: var(--text-secondary); margin-top: 15px; text-align: center;"></p>
     </div>
 
     <!-- 【画面2：電話帳】 -->
