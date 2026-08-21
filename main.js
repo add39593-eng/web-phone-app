@@ -8,6 +8,55 @@ let meInstance = null;
 let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
+let ringtoneInterval = null;
+let audioCtx = null; // 音声コンテキスト保持用
+
+// 初回操作時にAudioContextを有効化する関数
+function initAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// 着信音を鳴らす関数 (Web Audio API)
+function playRingtone() {
+  stopRingtone();
+  initAudioContext();
+  
+  const playBeep = () => {
+    try {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+      
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {}
+  };
+
+  playBeep();
+  ringtoneInterval = setInterval(playBeep, 1200);
+}
+
+function stopRingtone() {
+  if (ringtoneInterval) {
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
+  }
+}
 
 function formatPhoneNumber(str) {
   let digits = str.replace(/\D/g, '');
@@ -24,6 +73,7 @@ function formatPhoneNumber(str) {
 }
 
 function switchTab(tabName, btnElem) {
+  initAudioContext(); // タップ時に音声を許可させる
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active-tab'));
   
@@ -39,12 +89,14 @@ let rawDigits = "";
 const dialDisplay = document.getElementById('dial-display');
 
 function pressKey(char) {
+  initAudioContext(); // キー押下時に音声を許可させる
   if (rawDigits.length >= 8) return;
   rawDigits += char;
   dialDisplay.textContent = formatPhoneNumber(rawDigits);
 }
 
 function deleteKey() {
+  initAudioContext();
   if (rawDigits.length > 0) {
     rawDigits = rawDigits.slice(0, -1);
     dialDisplay.textContent = formatPhoneNumber(rawDigits);
@@ -65,6 +117,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.getElementById('login-btn').addEventListener('click', () => {
+  initAudioContext();
   const inputVal = document.getElementById('login-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
   if (formatted.length < 9) {
@@ -78,6 +131,7 @@ document.getElementById('login-btn').addEventListener('click', () => {
 });
 
 document.getElementById('update-num-btn').addEventListener('click', () => {
+  initAudioContext();
   const inputVal = document.getElementById('change-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
   if (formatted.length < 9) {
@@ -99,9 +153,8 @@ async function initApp() {
   }
 }
 
-// 待受ルーム（自分の番号をルーム名にする）
 async function startWaitingRoom() {
-  await cleanupCall(); // 念のため古いセッションを掃除
+  await cleanupCall();
 
   try {
     const context = await createSkyWayContext();
@@ -113,13 +166,20 @@ async function startWaitingRoom() {
     currentRoom = room;
     meInstance = me;
 
+    let isCallStarted = false;
+
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
+      
+      playRingtone(); // 着信音再生
 
       document.getElementById('accept-btn').onclick = async () => {
+        initAudioContext();
+        isCallStarted = true;
+        stopRingtone();
         document.getElementById('incoming-overlay').style.display = 'none';
         document.getElementById('incall-overlay').style.display = 'flex';
         document.getElementById('incall-target').textContent = "通話中";
@@ -135,12 +195,22 @@ async function startWaitingRoom() {
         addHistory("着信", "相手");
       };
 
-      document.getElementById('reject-btn').onclick = () => {
+      document.getElementById('reject-btn').onclick = async () => {
+        initAudioContext();
+        stopRingtone();
         document.getElementById('incoming-overlay').style.display = 'none';
+        addHistory("不在着信", "相手");
+        await forceEndCall();
       };
     });
 
     room.onMemberLeft.add(async () => {
+      const incomingOverlay = document.getElementById('incoming-overlay');
+      if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
+        stopRingtone();
+        incomingOverlay.style.display = 'none';
+        addHistory("不在着信", "相手");
+      }
       await forceEndCall();
     });
 
@@ -149,8 +219,8 @@ async function startWaitingRoom() {
   }
 }
 
-// 発信（相手の番号のルームに参加）
 document.getElementById('dial-call-btn').addEventListener('click', async () => {
+  initAudioContext();
   const targetNum = dialDisplay.textContent;
   if (!targetNum || targetNum.length < 9) {
     alert('正しい番号を入力してください');
@@ -163,7 +233,7 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
 
   document.getElementById('status-msg').textContent = `${targetNum} へ発信中...`;
 
-  await cleanupCall(); // 古いセッションを確実に破棄してから発信
+  await cleanupCall();
 
   try {
     const context = await createSkyWayContext();
@@ -177,9 +247,12 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
 
     await me.publish(myAudioStream);
 
+    let answered = false;
+
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
+      answered = true;
       const { stream } = await me.subscribe(e.publication.id);
       if (stream.contentType === 'audio') {
         const remoteAudio = document.createElement('audio');
@@ -195,17 +268,27 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
     });
 
     room.onMemberLeft.add(async () => {
+      if (!answered) {
+        document.getElementById('status-msg').textContent = "発信できませんでした（不在）";
+        addHistory("不発信", targetNum);
+        setTimeout(() => {
+          document.getElementById('status-msg').textContent = "";
+        }, 3000);
+      }
       await forceEndCall();
     });
 
   } catch (error) {
     console.error(error);
     document.getElementById('status-msg').textContent = '発信失敗';
+    setTimeout(() => {
+      document.getElementById('status-msg').textContent = "";
+    }, 3000);
   }
 });
 
-// 終話ボタン
 document.getElementById('hangup-btn').addEventListener('click', async () => {
+  initAudioContext();
   await forceEndCall();
 });
 
@@ -214,11 +297,12 @@ async function forceEndCall() {
   startWaitingRoom();
 }
 
-// 徹底的なクリーンアップ処理（前回のゴミを残さない）
 async function cleanupCall() {
   stopTimer();
+  stopRingtone();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
+  document.getElementById('status-msg').textContent = "";
   isHolding = false;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
@@ -239,6 +323,7 @@ async function cleanupCall() {
 }
 
 document.getElementById('hold-btn').addEventListener('click', () => {
+  initAudioContext();
   if (!isHolding) {
     myAudioStream.stop();
     isHolding = true;
@@ -274,6 +359,7 @@ function stopTimer() {
 }
 
 document.getElementById('add-contact-btn').addEventListener('click', () => {
+  initAudioContext();
   const name = document.getElementById('contact-name').value;
   const numInput = document.getElementById('contact-num').value;
   const formattedNum = formatPhoneNumber(numInput);
@@ -300,6 +386,7 @@ function loadContacts() {
 }
 
 function callContact(num) {
+  initAudioContext();
   rawDigits = num.replace(/-/g, '');
   dialDisplay.textContent = num;
   switchTab('dial', document.querySelectorAll('.nav-item')[0]);
@@ -321,7 +408,11 @@ function loadHistory() {
   history.forEach(h => {
     const li = document.createElement('li');
     li.className = 'card-item';
-    li.innerHTML = `<span><b>${h.type === '発信' ? '↗️' : '↙️'} ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
+    let icon = '↗️';
+    if (h.type === '着信') icon = '↙️';
+    if (h.type === '不在着信') icon = '📞❌';
+    if (h.type === '不発信') icon = '🚫';
+    li.innerHTML = `<span><b>${icon} ${h.type}: ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
     list.appendChild(li);
   });
 }
@@ -333,7 +424,7 @@ function createSkyWayContext() {
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
     scope: {
       app: {
-        id: 'e24483fd-d035-404f-8617-8ead41ced6bd',     // ← あなたのApp ID
+        id: 'e24483fd-d035-404f-8617-8ead41ced6bd',
         turn: true,
         actions: ['read'],
         channels: [
@@ -351,7 +442,7 @@ function createSkyWayContext() {
         ],
       },
     },
-  }).encode('SwR9Hpm1B3HR9O+4GLgZrdZ0H15rL0Y0IgPX+uJbkNM='); // ← あなたのSecret Key
+  }).encode('SwR9Hpm1B3HR9O+4GLgZrdZ0H15rL0Y0IgPX+uJbkNM=');
 
   return SkyWayContext.Create(token);
 }
