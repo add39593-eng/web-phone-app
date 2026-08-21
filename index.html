@@ -112,7 +112,7 @@
     }
     #login-screen.active { display: flex; flex-direction: column; justify-content: center; align-items: center; }
 
-    /* ダイヤルパッドのバランス調整 */
+    /* ダイヤルパッドのサイズアップ調整 */
     .dial-screen-inner {
       flex: 1;
       display: flex;
@@ -136,16 +136,16 @@
     .keypad {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      width: 250px;
-      margin-bottom: 10px;
+      gap: 10px; /* 少し大きくなった分、ギャップも微調整 */
+      width: 268px; /* 78px * 3 + 10px * 2 に合わせる */
+      margin-bottom: 12px;
     }
     .key {
-      width: 62px; height: 62px;
+      width: 78px; height: 78px; /* ボタンサイズを大きく変更 */
       border-radius: 50%;
       border: none;
       background: #f1f2f6;
-      font-size: 22px;
+      font-size: 28px;
       font-weight: 400;
       color: var(--text);
       cursor: pointer;
@@ -155,17 +155,17 @@
     }
     .key:active { background: #d1d5db; }
     .call-action-btn {
-      width: 62px; height: 62px;
+      width: 78px; height: 78px; /* キーパッドと完全同サイズに拡大 */
       border-radius: 50%;
       border: none;
       background: var(--success);
       color: white;
-      font-size: 22px;
+      font-size: 26px;
       cursor: pointer;
       display: flex; justify-content: center; align-items: center;
       box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
     }
-    .delete-key { background: transparent; color: var(--text-secondary); font-size: 18px; }
+    .delete-key { background: transparent; color: var(--text-secondary); font-size: 22px; }
 
     /* 入力フォーム・ボタン */
     input, button { font-family: inherit; }
@@ -272,7 +272,6 @@
       <div style="background: #fafafa; border: 1px solid var(--border); padding: 12px; margin-bottom: 14px;">
         <input type="text" id="contact-name" class="input-field" placeholder="名前 (例: 山田さん)">
         <input type="text" id="contact-num" class="input-field" placeholder="番号（数字のみ）" maxlength="8">
-        <!-- 修正：js側が紐付けているID「add-contact-btn」を付与 -->
         <button id="add-contact-btn" class="btn btn-success" style="padding: 8px; font-size: 14px;">連絡先を追加</button>
       </div>
       <ul id="contacts-list" class="card-list"></ul>
