@@ -182,7 +182,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   loadContacts();
   loadHistory();
-  setupGlobalButtonListeners(); // 画面起動時にボタンイベントを一度だけ登録
+  setupGlobalButtonListeners();
 });
 
 document.getElementById('login-btn').addEventListener('click', () => {
@@ -215,14 +215,16 @@ document.getElementById('update-num-btn').addEventListener('click', () => {
 
 async function initApp() {
   try {
-    myAudioStream = await SkyWayStreamFactory.createMicrophoneAudioStream();
+    if (!myAudioStream) {
+      myAudioStream = await SkyWayStreamFactory.createMicrophoneAudioStream();
+    }
     startWaitingRoom();
   } catch (err) {
     alert('マイクの取得に失敗しました');
   }
 }
 
-let activeIncomingStreamId = null;
+let activeIncomingPublication = null;
 let isCallStarted = false;
 
 async function startWaitingRoom() {
@@ -239,13 +241,13 @@ async function startWaitingRoom() {
     meInstance = me;
 
     isCallStarted = false;
-    activeIncomingStreamId = null;
+    activeIncomingPublication = null;
 
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
       if (isCallStarted) return;
 
-      activeIncomingStreamId = e.publication.id;
+      activeIncomingPublication = e.publication;
 
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
@@ -268,7 +270,6 @@ async function startWaitingRoom() {
   }
 }
 
-// ボタンのイベントは重複しないよう外側で定義・設定する
 function setupGlobalButtonListeners() {
   document.getElementById('unlock-audio-btn').onclick = () => {
     initAudioContext();
@@ -276,7 +277,7 @@ function setupGlobalButtonListeners() {
 
   document.getElementById('accept-btn').onclick = async () => {
     initAudioContext();
-    if (!activeIncomingStreamId || !currentRoom || !meInstance) return;
+    if (!activeIncomingPublication || !currentRoom || !meInstance) return;
 
     isCallStarted = true;
     stopRingtone();
@@ -285,8 +286,12 @@ function setupGlobalButtonListeners() {
     document.getElementById('incall-target').textContent = "通話中";
 
     try {
+      if (!myAudioStream) {
+        myAudioStream = await SkyWayStreamFactory.createMicrophoneAudioStream();
+      }
       await meInstance.publish(myAudioStream);
-      const { stream } = await meInstance.subscribe(activeIncomingStreamId);
+      
+      const { stream } = await meInstance.subscribe(activeIncomingPublication.id);
       if (stream.contentType === 'audio') {
         const remoteAudio = document.createElement('audio');
         remoteAudio.autoplay = true;
@@ -295,7 +300,7 @@ function setupGlobalButtonListeners() {
       startTimer();
       addHistory("着信", "相手");
     } catch (err) {
-      console.error(err);
+      console.error("通話応答エラー:", err);
     }
   };
 
@@ -334,6 +339,9 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
     currentRoom = room;
     meInstance = me;
 
+    if (!myAudioStream) {
+      myAudioStream = await SkyWayStreamFactory.createMicrophoneAudioStream();
+    }
     await me.publish(myAudioStream);
 
     let answered = false;
@@ -395,7 +403,7 @@ async function cleanupCall() {
   document.getElementById('status-msg').textContent = "";
   isHolding = false;
   isCallStarted = false;
-  activeIncomingStreamId = null;
+  activeIncomingPublication = null;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
 
