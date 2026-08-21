@@ -8,21 +8,33 @@ let meInstance = null;
 let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
-let ringtoneInterval = null; // 着信音用のタイマー
+let ringtoneInterval = null;
+let audioCtx = null; // 音声コンテキスト保持用
+
+// 初回操作時にAudioContextを有効化する関数
+function initAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
 
 // 着信音を鳴らす関数 (Web Audio API)
 function playRingtone() {
-  stopRingtone(); // 重複再生を防ぐ
+  stopRingtone();
+  initAudioContext();
   
   const playBeep = () => {
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, audioCtx.currentTime); // ラの音
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // 高めの音に変えてピピッとならす
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
       
       gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
@@ -36,7 +48,7 @@ function playRingtone() {
   };
 
   playBeep();
-  ringtoneInterval = setInterval(playBeep, 1200); // 1.2秒ごとに繰り返す
+  ringtoneInterval = setInterval(playBeep, 1200);
 }
 
 function stopRingtone() {
@@ -61,6 +73,7 @@ function formatPhoneNumber(str) {
 }
 
 function switchTab(tabName, btnElem) {
+  initAudioContext(); // タップ時に音声を許可させる
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active-tab'));
   
@@ -76,12 +89,14 @@ let rawDigits = "";
 const dialDisplay = document.getElementById('dial-display');
 
 function pressKey(char) {
+  initAudioContext(); // キー押下時に音声を許可させる
   if (rawDigits.length >= 8) return;
   rawDigits += char;
   dialDisplay.textContent = formatPhoneNumber(rawDigits);
 }
 
 function deleteKey() {
+  initAudioContext();
   if (rawDigits.length > 0) {
     rawDigits = rawDigits.slice(0, -1);
     dialDisplay.textContent = formatPhoneNumber(rawDigits);
@@ -102,6 +117,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.getElementById('login-btn').addEventListener('click', () => {
+  initAudioContext();
   const inputVal = document.getElementById('login-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
   if (formatted.length < 9) {
@@ -115,6 +131,7 @@ document.getElementById('login-btn').addEventListener('click', () => {
 });
 
 document.getElementById('update-num-btn').addEventListener('click', () => {
+  initAudioContext();
   const inputVal = document.getElementById('change-num-input').value.trim();
   const formatted = formatPhoneNumber(inputVal);
   if (formatted.length < 9) {
@@ -136,7 +153,6 @@ async function initApp() {
   }
 }
 
-// 待受ルーム（自分の番号をルーム名にする）
 async function startWaitingRoom() {
   await cleanupCall();
 
@@ -158,12 +174,12 @@ async function startWaitingRoom() {
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
       
-      // 着信音を鳴らす
-      playRingtone();
+      playRingtone(); // 着信音再生
 
       document.getElementById('accept-btn').onclick = async () => {
+        initAudioContext();
         isCallStarted = true;
-        stopRingtone(); // 着信音を止める
+        stopRingtone();
         document.getElementById('incoming-overlay').style.display = 'none';
         document.getElementById('incall-overlay').style.display = 'flex';
         document.getElementById('incall-target').textContent = "通話中";
@@ -180,7 +196,8 @@ async function startWaitingRoom() {
       };
 
       document.getElementById('reject-btn').onclick = async () => {
-        stopRingtone(); // 着信音を止める
+        initAudioContext();
+        stopRingtone();
         document.getElementById('incoming-overlay').style.display = 'none';
         addHistory("不在着信", "相手");
         await forceEndCall();
@@ -190,7 +207,7 @@ async function startWaitingRoom() {
     room.onMemberLeft.add(async () => {
       const incomingOverlay = document.getElementById('incoming-overlay');
       if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
-        stopRingtone(); // 着信音を止める
+        stopRingtone();
         incomingOverlay.style.display = 'none';
         addHistory("不在着信", "相手");
       }
@@ -202,8 +219,8 @@ async function startWaitingRoom() {
   }
 }
 
-// 発信（相手の番号のルームに参加）
 document.getElementById('dial-call-btn').addEventListener('click', async () => {
+  initAudioContext();
   const targetNum = dialDisplay.textContent;
   if (!targetNum || targetNum.length < 9) {
     alert('正しい番号を入力してください');
@@ -270,8 +287,8 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
   }
 });
 
-// 終話ボタン
 document.getElementById('hangup-btn').addEventListener('click', async () => {
+  initAudioContext();
   await forceEndCall();
 });
 
@@ -282,7 +299,7 @@ async function forceEndCall() {
 
 async function cleanupCall() {
   stopTimer();
-  stopRingtone(); // クリーニング時にも必ず着信音を止める
+  stopRingtone();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
   document.getElementById('status-msg').textContent = "";
@@ -306,6 +323,7 @@ async function cleanupCall() {
 }
 
 document.getElementById('hold-btn').addEventListener('click', () => {
+  initAudioContext();
   if (!isHolding) {
     myAudioStream.stop();
     isHolding = true;
@@ -341,6 +359,7 @@ function stopTimer() {
 }
 
 document.getElementById('add-contact-btn').addEventListener('click', () => {
+  initAudioContext();
   const name = document.getElementById('contact-name').value;
   const numInput = document.getElementById('contact-num').value;
   const formattedNum = formatPhoneNumber(numInput);
@@ -367,6 +386,7 @@ function loadContacts() {
 }
 
 function callContact(num) {
+  initAudioContext();
   rawDigits = num.replace(/-/g, '');
   dialDisplay.textContent = num;
   switchTab('dial', document.querySelectorAll('.nav-item')[0]);
@@ -394,7 +414,6 @@ function loadHistory() {
     if (h.type === '不発信') icon = '🚫';
     li.innerHTML = `<span><b>${icon} ${h.type}: ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
     list.appendChild(li);
-    
   });
 }
 
