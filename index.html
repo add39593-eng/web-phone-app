@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <!-- スマホで画面いっぱいに表示し、勝手にズームさせないための設定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Web Phone App</title>
   <style>
     :root {
       --primary: #007aff;
       --success: #34c759;
       --danger: #ff3b30;
-      --bg: #f8f9fa;
+      --bg: #ffffff;
       --card-bg: #ffffff;
       --text: #1c1c1e;
       --text-secondary: #8e8e93;
@@ -17,26 +19,42 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #eef2f6;
+      background: var(--bg);
       margin: 0;
+      padding: 0;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      height: 100dvh; /* モバイルブラウザの上下バーを考慮した高さ */
       color: var(--text);
+      overflow: hidden;
     }
 
     .phone-container {
       width: 100%;
-      max-width: 390px;
       height: 100%;
-      max-height: 750px;
+      max-width: 430px; /* PCなどではスマホ風の幅に制限 */
+      max-height: 100vh;
+      max-height: 100dvh;
       background: var(--card-bg);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
       display: flex;
       flex-direction: column;
       overflow: hidden;
       position: relative;
+    }
+
+    /* スマホより大きい画面のときは少し影をつけてアプリっぽくする */
+    @media (min-width: 431px) {
+      .phone-container {
+        height: 850px;
+        border-radius: 40px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        border: 10px solid #1c1c1e;
+      }
+      body {
+        background: #f2f2f7;
+      }
     }
 
     .screen {
@@ -45,7 +63,7 @@
       padding: 24px 20px;
       overflow-y: auto;
       box-sizing: border-box;
-      padding-bottom: 80px;
+      padding-bottom: 90px;
     }
     .active-screen { display: block; }
 
@@ -62,7 +80,7 @@
       bottom: 0;
       width: 100%;
       height: 65px;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.92);
       backdrop-filter: blur(10px);
       border-top: 1px solid var(--border);
       display: flex;
@@ -142,10 +160,8 @@
     }
     .delete-key { background: transparent; color: var(--text-secondary); font-size: 18px; }
 
-    /* 共通パーツ・入力フォーム */
-    input, button {
-      font-family: inherit;
-    }
+    /* 入力フォーム・ボタン */
+    input, button { font-family: inherit; }
     .input-field {
       width: 100%;
       padding: 12px 16px;
@@ -156,7 +172,6 @@
       margin-bottom: 12px;
       background: #fafafa;
       outline: none;
-      transition: border-color 0.2s;
     }
     .input-field:focus { border-color: var(--primary); background: #fff; }
 
@@ -173,12 +188,8 @@
     .btn-success { background: var(--success); color: white; }
     .btn-danger { background: var(--danger); color: white; }
 
-    /* リストデザイン（電話帳・履歴） */
-    .card-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
+    /* リストデザイン */
+    .card-list { list-style: none; padding: 0; margin: 0; }
     .card-item {
       background: #fafafa;
       border: 1px solid var(--border);
@@ -222,7 +233,7 @@
       <button id="login-btn" class="btn btn-primary" style="margin-top: 10px;">設定してはじめる</button>
     </div>
 
-    <!-- 【画面1：発信画面（ダイヤルパッド）】 -->
+    <!-- 【画面1：発信画面】 -->
     <div id="screen-dial" class="screen active-screen">
       <h3>キーパッド</h3>
       <div class="display-number" id="dial-display"></div>
