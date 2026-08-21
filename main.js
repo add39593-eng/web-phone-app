@@ -24,7 +24,7 @@ function initAudioContext() {
 
 // 着信音を鳴らす関数 (Web Audio API)
 function playRingtone() {
-  stopRingtone(); // 二重鳴り防止のため必ず一度止める
+  stopRingtone();
   initAudioContext();
   
   const playBeep = () => {
@@ -182,6 +182,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   loadContacts();
   loadHistory();
+  setupGlobalButtonListeners(); // 画面起動時にボタンイベントを一度だけ登録
 });
 
 document.getElementById('login-btn').addEventListener('click', () => {
@@ -221,6 +222,9 @@ async function initApp() {
   }
 }
 
+let activeIncomingStreamId = null;
+let isCallStarted = false;
+
 async function startWaitingRoom() {
   await cleanupCall();
 
@@ -234,54 +238,25 @@ async function startWaitingRoom() {
     currentRoom = room;
     meInstance = me;
 
-    let isCallStarted = false;
+    isCallStarted = false;
+    activeIncomingStreamId = null;
 
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
-      if (isCallStarted) return; // すでに通話が始まっていれば無視
+      if (isCallStarted) return;
+
+      activeIncomingStreamId = e.publication.id;
 
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
       
       playRingtone();
-
-      document.getElementById('unlock-audio-btn').onclick = () => {
-        initAudioContext();
-      };
-
-      // イベントの重複登録を防ぐため、ボタンのonclickを直接上書き
-      document.getElementById('accept-btn').onclick = async () => {
-        initAudioContext();
-        isCallStarted = true;
-        stopRingtone(); // 着信音を確実に止める
-        document.getElementById('incoming-overlay').style.display = 'none';
-        document.getElementById('incall-overlay').style.display = 'flex';
-        document.getElementById('incall-target').textContent = "通話中";
-
-        await me.publish(myAudioStream);
-        const { stream } = await me.subscribe(e.publication.id);
-        if (stream.contentType === 'audio') {
-          const remoteAudio = document.createElement('audio');
-          remoteAudio.autoplay = true;
-          stream.attach(remoteAudio);
-        }
-        startTimer();
-        addHistory("着信", "相手");
-      };
-
-      document.getElementById('reject-btn').onclick = async () => {
-        initAudioContext();
-        stopRingtone(); // 着信音を確実に止める
-        document.getElementById('incoming-overlay').style.display = 'none';
-        addHistory("不在着信", "相手");
-        await forceEndCall();
-      };
     });
 
     room.onMemberLeft.add(async () => {
       const incomingOverlay = document.getElementById('incoming-overlay');
       if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
-        stopRingtone(); // 相手が切ったときも確実に止める
+        stopRingtone();
         incomingOverlay.style.display = 'none';
         addHistory("不在着信", "相手");
       }
@@ -291,6 +266,46 @@ async function startWaitingRoom() {
   } catch (error) {
     console.error(error);
   }
+}
+
+// ボタンのイベントは重複しないよう外側で定義・設定する
+function setupGlobalButtonListeners() {
+  document.getElementById('unlock-audio-btn').onclick = () => {
+    initAudioContext();
+  };
+
+  document.getElementById('accept-btn').onclick = async () => {
+    initAudioContext();
+    if (!activeIncomingStreamId || !currentRoom || !meInstance) return;
+
+    isCallStarted = true;
+    stopRingtone();
+    document.getElementById('incoming-overlay').style.display = 'none';
+    document.getElementById('incall-overlay').style.display = 'flex';
+    document.getElementById('incall-target').textContent = "通話中";
+
+    try {
+      await meInstance.publish(myAudioStream);
+      const { stream } = await meInstance.subscribe(activeIncomingStreamId);
+      if (stream.contentType === 'audio') {
+        const remoteAudio = document.createElement('audio');
+        remoteAudio.autoplay = true;
+        stream.attach(remoteAudio);
+      }
+      startTimer();
+      addHistory("着信", "相手");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  document.getElementById('reject-btn').onclick = async () => {
+    initAudioContext();
+    stopRingtone();
+    document.getElementById('incoming-overlay').style.display = 'none';
+    addHistory("不在着信", "相手");
+    await forceEndCall();
+  };
 }
 
 document.getElementById('dial-call-btn').addEventListener('click', async () => {
@@ -373,12 +388,14 @@ async function forceEndCall() {
 
 async function cleanupCall() {
   stopTimer();
-  stopRingtone(); // 終了時は必ず着信音を強制停止
+  stopRingtone();
   stopHoldMusic();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
   document.getElementById('status-msg').textContent = "";
   isHolding = false;
+  isCallStarted = false;
+  activeIncomingStreamId = null;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
 
