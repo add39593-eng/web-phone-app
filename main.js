@@ -271,9 +271,7 @@ async function startWaitingRoom() {
 }
 
 function setupGlobalButtonListeners() {
-  document.getElementById('unlock-audio-btn').onclick = () => {
-    initAudioContext();
-  };
+  // unlock-audio-btn の処理を削除し、エラーを解消しました
 
   document.getElementById('accept-btn').onclick = async () => {
     initAudioContext();
