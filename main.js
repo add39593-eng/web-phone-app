@@ -113,6 +113,8 @@ async function startWaitingRoom() {
     currentRoom = room;
     meInstance = me;
 
+    let isCallStarted = false; // 通話が実際につながったかどうか
+
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
@@ -120,6 +122,7 @@ async function startWaitingRoom() {
       document.getElementById('incoming-number').textContent = "着信中...";
 
       document.getElementById('accept-btn').onclick = async () => {
+        isCallStarted = true;
         document.getElementById('incoming-overlay').style.display = 'none';
         document.getElementById('incall-overlay').style.display = 'flex';
         document.getElementById('incall-target').textContent = "通話中";
@@ -135,12 +138,20 @@ async function startWaitingRoom() {
         addHistory("着信", "相手");
       };
 
-      document.getElementById('reject-btn').onclick = () => {
+      document.getElementById('reject-btn').onclick = async () => {
         document.getElementById('incoming-overlay').style.display = 'none';
+        addHistory("不在着信", "相手");
+        await forceEndCall();
       };
     });
 
     room.onMemberLeft.add(async () => {
+      // 呼び出し中に相手がルームからいなくなった（切られた）場合
+      const incomingOverlay = document.getElementById('incoming-overlay');
+      if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
+        incomingOverlay.style.display = 'none';
+        addHistory("不在着信", "相手");
+      }
       await forceEndCall();
     });
 
@@ -177,9 +188,12 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
 
     await me.publish(myAudioStream);
 
+    let answered = false;
+
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
+      answered = true;
       const { stream } = await me.subscribe(e.publication.id);
       if (stream.contentType === 'audio') {
         const remoteAudio = document.createElement('audio');
@@ -195,12 +209,22 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
     });
 
     room.onMemberLeft.add(async () => {
+      if (!answered) {
+        document.getElementById('status-msg').textContent = "発信できませんでした（不在）";
+        addHistory("不発信", targetNum);
+        setTimeout(() => {
+          document.getElementById('status-msg').textContent = "";
+        }, 3000);
+      }
       await forceEndCall();
     });
 
   } catch (error) {
     console.error(error);
     document.getElementById('status-msg').textContent = '発信失敗';
+    setTimeout(() => {
+      document.getElementById('status-msg').textContent = "";
+    }, 3000);
   }
 });
 
@@ -219,6 +243,7 @@ async function cleanupCall() {
   stopTimer();
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
+  document.getElementById('status-msg').textContent = ""; // 発信中などのメッセージを必ずクリア
   isHolding = false;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
@@ -321,7 +346,11 @@ function loadHistory() {
   history.forEach(h => {
     const li = document.createElement('li');
     li.className = 'card-item';
-    li.innerHTML = `<span><b>${h.type === '発信' ? '↗️' : '↙️'} ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
+    let icon = '↗️';
+    if (h.type === '着信') icon = '↙️';
+    if (h.type === '不在着信') icon = '📞❌';
+    if (h.type === '不発信') icon = '🚫';
+    li.innerHTML = `<span><b>${icon} ${h.type}: ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
     list.appendChild(li);
   });
 }
@@ -333,7 +362,7 @@ function createSkyWayContext() {
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
     scope: {
       app: {
-        id: 'e24483fd-d035-404f-8617-8ead41ced6bd',     // ← あなたのApp ID
+        id: 'e24483fd-d035-404f-8617-8ead41ced6bd',
         turn: true,
         actions: ['read'],
         channels: [
@@ -351,7 +380,7 @@ function createSkyWayContext() {
         ],
       },
     },
-  }).encode('SwR9Hpm1B3HR9O+4GLgZrdZ0H15rL0Y0IgPX+uJbkNM='); // ← あなたのSecret Key
+  }).encode('SwR9Hpm1B3HR9O+4GLgZrdZ0H15rL0Y0IgPX+uJbkNM=');
 
   return SkyWayContext.Create(token);
 }
