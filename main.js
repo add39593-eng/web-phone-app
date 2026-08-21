@@ -8,6 +8,43 @@ let meInstance = null;
 let isHolding = false;
 let timerInterval = null;
 let secondsElapsed = 0;
+let ringtoneInterval = null; // 着信音用のタイマー
+
+// 着信音を鳴らす関数 (Web Audio API)
+function playRingtone() {
+  stopRingtone(); // 重複再生を防ぐ
+  
+  const playBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime); // ラの音
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // 高めの音に変えてピピッとならす
+      
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {}
+  };
+
+  playBeep();
+  ringtoneInterval = setInterval(playBeep, 1200); // 1.2秒ごとに繰り返す
+}
+
+function stopRingtone() {
+  if (ringtoneInterval) {
+    clearInterval(ringtoneInterval);
+    ringtoneInterval = null;
+  }
+}
 
 function formatPhoneNumber(str) {
   let digits = str.replace(/\D/g, '');
@@ -101,7 +138,7 @@ async function initApp() {
 
 // 待受ルーム（自分の番号をルーム名にする）
 async function startWaitingRoom() {
-  await cleanupCall(); // 念のため古いセッションを掃除
+  await cleanupCall();
 
   try {
     const context = await createSkyWayContext();
@@ -113,16 +150,20 @@ async function startWaitingRoom() {
     currentRoom = room;
     meInstance = me;
 
-    let isCallStarted = false; // 通話が実際につながったかどうか
+    let isCallStarted = false;
 
     room.onStreamPublished.add(async (e) => {
       if (e.publication.publisher.id === me.id) return;
 
       document.getElementById('incoming-overlay').style.display = 'flex';
       document.getElementById('incoming-number').textContent = "着信中...";
+      
+      // 着信音を鳴らす
+      playRingtone();
 
       document.getElementById('accept-btn').onclick = async () => {
         isCallStarted = true;
+        stopRingtone(); // 着信音を止める
         document.getElementById('incoming-overlay').style.display = 'none';
         document.getElementById('incall-overlay').style.display = 'flex';
         document.getElementById('incall-target').textContent = "通話中";
@@ -139,6 +180,7 @@ async function startWaitingRoom() {
       };
 
       document.getElementById('reject-btn').onclick = async () => {
+        stopRingtone(); // 着信音を止める
         document.getElementById('incoming-overlay').style.display = 'none';
         addHistory("不在着信", "相手");
         await forceEndCall();
@@ -146,9 +188,9 @@ async function startWaitingRoom() {
     });
 
     room.onMemberLeft.add(async () => {
-      // 呼び出し中に相手がルームからいなくなった（切られた）場合
       const incomingOverlay = document.getElementById('incoming-overlay');
       if (incomingOverlay.style.display === 'flex' && !isCallStarted) {
+        stopRingtone(); // 着信音を止める
         incomingOverlay.style.display = 'none';
         addHistory("不在着信", "相手");
       }
@@ -174,7 +216,7 @@ document.getElementById('dial-call-btn').addEventListener('click', async () => {
 
   document.getElementById('status-msg').textContent = `${targetNum} へ発信中...`;
 
-  await cleanupCall(); // 古いセッションを確実に破棄してから発信
+  await cleanupCall();
 
   try {
     const context = await createSkyWayContext();
@@ -238,12 +280,12 @@ async function forceEndCall() {
   startWaitingRoom();
 }
 
-// 徹底的なクリーンアップ処理（前回のゴミを残さない）
 async function cleanupCall() {
   stopTimer();
+  stopRingtone(); // クリーニング時にも必ず着信音を止める
   document.getElementById('incall-overlay').style.display = 'none';
   document.getElementById('incoming-overlay').style.display = 'none';
-  document.getElementById('status-msg').textContent = ""; // 発信中などのメッセージを必ずクリア
+  document.getElementById('status-msg').textContent = "";
   isHolding = false;
   document.getElementById('hold-btn').style.background = '#3a3a3c';
   document.getElementById('hold-btn').style.color = '#fff';
@@ -352,6 +394,7 @@ function loadHistory() {
     if (h.type === '不発信') icon = '🚫';
     li.innerHTML = `<span><b>${icon} ${h.type}: ${h.num}</b><br><small style="color:var(--text-secondary)">${h.time}</small></span>`;
     list.appendChild(li);
+    
   });
 }
 
